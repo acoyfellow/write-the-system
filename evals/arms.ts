@@ -3,6 +3,7 @@ import { fileURLToPath } from "node:url";
 import { Schema } from "effect";
 import { DurableScript, external, memoryStorage, type Outcome, read } from "@acoyfellow/amber";
 import { EXAMPLES, type Item, type Legacy, SPEC, score } from "./data.ts";
+import { clefPriorities } from "./clef.ts";
 import { chat, type Message } from "./model.ts";
 
 type ModuleConstructor = new (bytes: Uint8Array) => WebAssembly.Module;
@@ -24,6 +25,10 @@ export type ArmResult = {
 	readonly programSource: string | null;
 	readonly attempts: number;
 	readonly error: string | null;
+	readonly judgeCalls?: number;
+	readonly clefItems?: number;
+	readonly clefErrors?: number;
+	readonly clefMs?: number;
 };
 
 const meter = (): Meter => ({ tokens: 0, calls: 0, modelMs: 0 });
@@ -186,3 +191,111 @@ export const modelWritesProgram = async (items: ReadonlyArray<Item>, withCheck: 
 };
 
 export const summarize = (items: ReadonlyArray<Item>, result: ArmResult) => ({ ...result, outputs: undefined, score: score(items, result.outputs) });
+
+const CLEF_WRITER = `${SPEC}
+
+Write a JavaScript program that migrates every config. It runs in a sandbox with no imports, no network and no timers.
+- tool("configs", {}) returns the array of v1 configs.
+- tool("judge_priorities", { notes }) takes an array of owner_note strings and returns an array of the same length, each "urgent", "normal" or "low". A fast small model judges them all at once. Call it once, with every note.
+- The program's last expression is its result: the array of v2 objects, in input order.
+Write plain loops (for...of), not forEach or map, around tool() calls.
+
+Examples:
+
+${examplesText}
+
+Reply with only the program in one javascript code block.`;
+
+type ClefRun = { readonly outcome: Outcome; readonly programMs: number; readonly calls: number; readonly items: number; readonly errors: number; readonly clefMs: number };
+
+const runClefProgram = async (source: string, configs: ReadonlyArray<Legacy>): Promise<ClefRun> => {
+	const tools = {
+		configs: read(Schema.Json, () => configs as unknown as Schema.Json),
+		judge_priorities: external(Schema.Json),
+	};
+	const script = new DurableScript({ programId: `c-${Date.now()}-${Math.random()}`, storage: memoryStorage(), tools, wasm, budgetTicks: 5000 });
+	const started = Date.now();
+	let judgeMs = 0;
+	let calls = 0;
+	let items = 0;
+	let errors = 0;
+	let clefMs = 0;
+	let outcome = await script.run(source);
+	for (let guard = 0; guard < 1000; guard++) {
+		if (outcome._tag === "Running") {
+			outcome = await script.alarm();
+			continue;
+		}
+		if (outcome._tag !== "Waiting") break;
+		const notes = ((outcome.args as { notes?: ReadonlyArray<unknown> }).notes ?? []).map(String);
+		const judgeStarted = Date.now();
+		const judged = await clefPriorities(notes);
+		judgeMs += Date.now() - judgeStarted;
+		calls += 1;
+		items += notes.length;
+		errors += judged.errors;
+		clefMs += judged.roundTripMs;
+		outcome = await script.answer(outcome.token, judged.labels);
+	}
+	return { outcome, programMs: Date.now() - started - judgeMs, calls, items, errors, clefMs };
+};
+
+const mechanicalMistakes = (outputs: ReadonlyArray<unknown>): Array<string> =>
+	EXAMPLES.flatMap((example, index) => {
+		const got = outputs[index] as Record<string, unknown> | undefined;
+		const wanted = { ...example.expected, priority: got?.priority };
+		return JSON.stringify(got) === JSON.stringify(wanted) ? [] : [`input: ${JSON.stringify(example.input)}\nexpected: ${JSON.stringify(example.expected)}\ngot: ${JSON.stringify(got ?? null)}`];
+	});
+
+export const modelWritesProgramClef = async (items: ReadonlyArray<Item>): Promise<ArmResult> => {
+	const counter = meter();
+	const started = Date.now();
+	const messages: Array<Message> = [{ role: "user", content: CLEF_WRITER }];
+	let source = "";
+	let attempts = 0;
+	const clef = { calls: 0, items: 0, errors: 0, ms: 0 };
+	const add = (run: ClefRun): void => {
+		clef.calls += run.calls;
+		clef.items += run.items;
+		clef.errors += run.errors;
+		clef.ms += run.clefMs;
+	};
+	while (attempts < 3) {
+		attempts += 1;
+		const reply = await ask(counter, messages);
+		source = fenced(reply, "javascript");
+		if (source === "") continue;
+		messages.push({ role: "assistant", content: reply });
+		const trial = await runClefProgram(source, EXAMPLES.map((example) => example.input));
+		add(trial);
+		if (trial.outcome._tag === "Finished") {
+			const wrong = mechanicalMistakes(Array.isArray(trial.outcome.result) ? trial.outcome.result : []);
+			if (wrong.length === 0) break;
+			messages.push({ role: "user", content: `I ran your program on the examples. These came out wrong (priority comes from judge_priorities, so only the other fields count):\n\n${wrong.join("\n\n")}\n\nFix the program. Reply with only the whole program in one javascript code block.` });
+		} else {
+			const detail = trial.outcome._tag === "Failed" ? `${trial.outcome.error}: ${firstLines(trial.outcome.message, 4)}` : trial.outcome._tag;
+			messages.push({ role: "user", content: `I ran your program on the examples and it did not finish: ${detail}\n\nFix the program. Reply with only the whole program in one javascript code block.` });
+		}
+	}
+	const base = { arm: "model-writes-program-clef", attempts };
+	if (source === "") return { ...base, outputs: items.map(() => null), tokens: counter.tokens, modelCalls: counter.calls, modelMs: counter.modelMs, wallMs: Date.now() - started, programMs: null, programSource: "", error: "EmptyReply: the model returned no program" };
+	const run = await runClefProgram(source, items.map((item) => item.input));
+	add(run);
+	const outputs = run.outcome._tag === "Finished" && Array.isArray(run.outcome.result) ? run.outcome.result : [];
+	const error = run.outcome._tag === "Failed" ? `${run.outcome.error}: ${firstLines(run.outcome.message, 3)}` : run.outcome._tag === "Finished" ? null : run.outcome._tag;
+	return {
+		...base,
+		outputs: items.map((_item, index) => outputs[index] ?? null),
+		tokens: counter.tokens,
+		modelCalls: counter.calls,
+		modelMs: counter.modelMs,
+		wallMs: Date.now() - started,
+		programMs: run.programMs,
+		programSource: source,
+		error,
+		judgeCalls: clef.calls,
+		clefItems: clef.items,
+		clefErrors: clef.errors,
+		clefMs: clef.ms,
+	};
+};

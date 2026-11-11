@@ -1,0 +1,41 @@
+{
+  "kind": "write-the-system",
+  "at": "2026-11-11T09:08:08.703Z",
+  "commit": "5dc22666d8e410e5e823562d4e922161e7822479",
+  "model": "@cf/zai-org/glm-5.3-flash",
+  "count": 30,
+  "seed": 7,
+  "trials": [
+    {
+      "trial": 1,
+      "arm": "model-writes-program-clef",
+      "attempts": 1,
+      "tokens": 7423,
+      "modelCalls": 1,
+      "modelMs": 59194,
+      "wallMs": 82696,
+      "programMs": 3,
+      "programSource": "function parseTimeoutMs(value) {\n  if (typeof value === \"number\") {\n    return Math.round(value * 1000);\n  }\n  const match = String(value).trim().match(/^(-?\\d+(?:\\.\\d+)?)\\s*(ms|s|m)?$/);\n  if (match) {\n    const amount = parseFloat(match[1]);\n    const unit = match[2] || \"s\";\n    if (unit === \"ms\") return Math.round(amount);\n    if (unit === \"m\") return Math.round(amount * 60 * 1000);\n    return Math.round(amount * 1000);\n  }\n  const fallback = parseFloat(String(value).trim());\n  return Number.isNaN(fallback) ? 0 : Math.round(fallback * 1000);\n}\n\nfunction parseEndpoint(raw) {\n  const str = String(raw).trim();\n  const colonIdx = str.lastIndexOf(\":\");\n  if (colonIdx !== -1) {\n    const portPart = str.slice(colonIdx + 1);\n    const hostPart = str.slice(0, colonIdx);\n    if (/^\\d+$/.test(portPart) && hostPart.lastIndexOf(\":\") === -1) {\n      return { host: hostPart, port: parseInt(portPart, 10) };\n    }\n  }\n  return { host: str, port: 443 };\n}\n\nfunction parseRetries(value) {\n  if (value === undefined || value === null || value === \"\") {\n    return 0;\n  }\n  const parsed = parseInt(value, 10);\n  return Number.isNaN(parsed) ? 0 : parsed;\n}\n\nfunction parseTags(value) {\n  const rawItems = [];\n  if (Array.isArray(value)) {\n    for (const item of value) {\n      rawItems.push(String(item));\n    }\n  } else if (typeof value === \"string\") {\n    for (const item of value.split(\",\")) {\n      rawItems.push(item);\n    }\n  }\n  const seen = Object.create(null);\n  const tags = [];\n  for (const item of rawItems) {\n    const tag = item.trim().toLowerCase();\n    if (tag === \"\" || seen[tag]) {\n      continue;\n    }\n    seen[tag] = true;\n    tags.push(tag);\n  }\n  tags.sort();\n  return tags;\n}\n\nfunction parseEnabled(value) {\n  if (value === true || value === 1) return true;\n  if (value === false || value === 0) return false;\n  const str = String(value).trim().toLowerCase();\n  return str === \"yes\" || str === \"true\" || str === \"on\" || str === \"1\";\n}\n\nconst v1Configs = tool(\"configs\", {});\n\nconst notes = [];\nfor (const cfg of v1Configs) {\n  notes.push(cfg && typeof cfg.owner_note === \"string\" ? cfg.owner_note : \"\");\n}\n\nconst priorities = tool(\"judge_priorities\", { notes: notes });\n\nconst v2Configs = [];\nlet index = 0;\nfor (const cfg of v1Configs) {\n  const endpoint = parseEndpoint(cfg.endpoint);\n  v2Configs.push({\n    name: cfg.name,\n    timeoutMs: parseTimeoutMs(cfg.timeout),\n    host: endpoint.host,\n    port: endpoint.port,\n    retries: parseRetries(cfg.retries),\n    tags: parseTags(cfg.tags),\n    enabled: parseEnabled(cfg.enabled),\n    priority: priorities[index] || \"normal\"\n  });\n  index++;\n}\n\nv2Configs;",
+      "error": null,
+      "judgeCalls": 2,
+      "clefItems": 33,
+      "clefErrors": 0,
+      "clefMs": 23463,
+      "score": {
+        "exact": 30,
+        "fields": {
+          "name": 30,
+          "timeoutMs": 30,
+          "host": 30,
+          "port": 30,
+          "retries": 30,
+          "tags": 30,
+          "enabled": 30,
+          "priority": 30
+        },
+        "total": 30
+      }
+    }
+  ],
+  "sha256": "77fbba0c7ed55cb98f665eae12adb578f3ccb816b47d49694cab6deaadafa382"
+}

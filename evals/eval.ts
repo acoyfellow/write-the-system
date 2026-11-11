@@ -4,7 +4,7 @@ import { writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { makeItems } from "./data.ts";
 import { MODEL } from "./model.ts";
-import { modelDoesEveryItem, modelWritesProgram, summarize } from "./arms.ts";
+import { modelDoesEveryItem, modelWritesProgram, modelWritesProgramClef, summarize } from "./arms.ts";
 
 const COUNT = Number(process.env.COUNT ?? 500);
 
@@ -16,6 +16,8 @@ const ARMS = (process.env.ARMS ?? "every,program,checked").split(",");
 
 const full = COUNT >= 500 && TRIALS >= 3;
 
+const tag = process.env.TAG ?? "";
+
 const commit = execFileSync("git", ["rev-parse", "HEAD"], { encoding: "utf8" }).trim();
 
 if (full && execFileSync("git", ["status", "--porcelain", "src", "evals"], { encoding: "utf8" }).trim() !== "") throw new Error("commit src and evals before a full run");
@@ -26,15 +28,15 @@ const trials = [];
 
 for (let trial = 1; trial <= TRIALS; trial++) {
 	for (const arm of ARMS) {
-		const result = arm === "every" ? await modelDoesEveryItem(items) : await modelWritesProgram(items, arm === "checked");
+		const result = arm === "every" ? await modelDoesEveryItem(items) : arm === "clef" ? await modelWritesProgramClef(items) : await modelWritesProgram(items, arm === "checked");
 		const summary = { trial, ...summarize(items, result) };
 		trials.push(summary);
-		console.log(`${trial} ${summary.arm} exact=${summary.score.exact}/${summary.score.total} priority=${summary.score.fields.priority} tokens=${summary.tokens} calls=${summary.modelCalls} wall=${summary.wallMs}ms program=${summary.programMs ?? "-"}ms attempts=${summary.attempts}${summary.error ? ` error=${summary.error.split("\n")[0]}` : ""}`);
+		console.log(`${trial} ${summary.arm} exact=${summary.score.exact}/${summary.score.total} priority=${summary.score.fields.priority} tokens=${summary.tokens} calls=${summary.modelCalls} wall=${summary.wallMs}ms program=${summary.programMs ?? "-"}ms attempts=${summary.attempts}${summary.clefItems === undefined ? "" : ` clef=${summary.clefItems}items/${summary.judgeCalls}calls/${summary.clefMs}ms errors=${summary.clefErrors}`}${summary.error ? ` error=${summary.error.split("\n")[0]}` : ""}`);
 	}
 }
 
 const sealed = { kind: "write-the-system", at: new Date().toISOString(), commit, model: MODEL, count: COUNT, seed: SEED, trials };
 const body = JSON.stringify(sealed, null, 2);
-const out = fileURLToPath(new URL(`../bench/${full ? "receipt" : "receipt-small"}.json`, import.meta.url));
+const out = fileURLToPath(new URL(`../bench/${full ? "receipt" : "receipt-small"}${tag === "" ? "" : `-${tag}`}.json`, import.meta.url));
 writeFileSync(out, `${JSON.stringify({ ...sealed, sha256: createHash("sha256").update(body).digest("hex") }, null, 2)}\n`);
 console.log(`DONE ${out}`);

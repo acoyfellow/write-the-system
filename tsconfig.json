@@ -1,0 +1,4 @@
+{
+  "compilerOptions": { "strict": true, "module": "preserve", "moduleResolution": "bundler", "target": "es2022", "allowImportingTsExtensions": true, "noEmit": true, "skipLibCheck": true, "types": ["node"] },
+  "include": ["evals", "src", "test"]
+}
