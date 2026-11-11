@@ -1,0 +1,89 @@
+{
+  "kind": "write-the-system",
+  "at": "2026-11-11T07:58:17.497Z",
+  "commit": "054a540dbb55d1ec88f9e17f2917cd26b2b22964",
+  "model": "@cf/zai-org/glm-5.3-flash",
+  "count": 30,
+  "seed": 7,
+  "trials": [
+    {
+      "trial": 1,
+      "arm": "model-does-every-item",
+      "tokens": 8437,
+      "modelCalls": 3,
+      "modelMs": 44443,
+      "wallMs": 22175,
+      "programMs": null,
+      "programSource": null,
+      "attempts": 1,
+      "error": null,
+      "score": {
+        "exact": 30,
+        "fields": {
+          "name": 30,
+          "timeoutMs": 30,
+          "host": 30,
+          "port": 30,
+          "retries": 30,
+          "tags": 30,
+          "enabled": 30,
+          "priority": 30
+        },
+        "total": 30
+      }
+    },
+    {
+      "trial": 1,
+      "arm": "model-writes-program",
+      "tokens": 2674,
+      "modelCalls": 1,
+      "modelMs": 34681,
+      "wallMs": 34696,
+      "programMs": 14,
+      "programSource": "",
+      "attempts": 1,
+      "error": null,
+      "score": {
+        "exact": 0,
+        "fields": {
+          "name": 0,
+          "timeoutMs": 0,
+          "host": 0,
+          "port": 0,
+          "retries": 0,
+          "tags": 0,
+          "enabled": 0,
+          "priority": 0
+        },
+        "total": 30
+      }
+    },
+    {
+      "trial": 1,
+      "arm": "model-writes-program-checked",
+      "tokens": 8958,
+      "modelCalls": 3,
+      "modelMs": 78571,
+      "wallMs": 78578,
+      "programMs": 1,
+      "programSource": "",
+      "attempts": 3,
+      "error": null,
+      "score": {
+        "exact": 0,
+        "fields": {
+          "name": 0,
+          "timeoutMs": 0,
+          "host": 0,
+          "port": 0,
+          "retries": 0,
+          "tags": 0,
+          "enabled": 0,
+          "priority": 0
+        },
+        "total": 30
+      }
+    }
+  ],
+  "sha256": "bc6f167b031c632a112aee5a44f6264f8c37dfe7df80187f4845f91021249b87"
+}

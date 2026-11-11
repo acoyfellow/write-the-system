@@ -18,7 +18,7 @@ const config = (): { readonly accountId: string; readonly gateway: string; reado
 
 const settings = config();
 
-type Body = { result?: { choices?: ReadonlyArray<{ message?: { content?: string } }>; usage?: { total_tokens?: number } } };
+type Body = { result?: { choices?: ReadonlyArray<{ message?: { content?: string | null; reasoning_content?: string | null }; finish_reason?: string }>; usage?: { total_tokens?: number } } };
 
 export const chat = async (messages: ReadonlyArray<Message>): Promise<Reply> => {
 	for (let attempt = 1; ; attempt++) {
@@ -26,12 +26,14 @@ export const chat = async (messages: ReadonlyArray<Message>): Promise<Reply> => 
 		const response = await fetch(`https://gateway.ai.cloudflare.com/v1/${settings.accountId}/${settings.gateway}/workers-ai/${MODEL}`, {
 			method: "POST",
 			headers: { authorization: `Bearer ${settings.token}`, "content-type": "application/json", "cf-aig-skip-cache": "true" },
-			body: JSON.stringify({ messages, max_tokens: 2000, temperature: 0.7, chat_template_kwargs: { enable_thinking: false } }),
+			body: JSON.stringify({ messages, max_tokens: Number(process.env.MAX_TOKENS ?? 6000), temperature: 0.7, chat_template_kwargs: { enable_thinking: false } }),
 			signal: AbortSignal.timeout(180_000),
 		}).catch(() => null);
 		if (response?.ok) {
 			const body = (await response.json()) as Body;
-			return { content: body.result?.choices?.[0]?.message?.content ?? "", tokens: body.result?.usage?.total_tokens ?? 0, ms: Date.now() - started };
+			const choice = body.result?.choices?.[0];
+			if (process.env.DEBUG_MODEL === "1") console.error("finish", choice?.finish_reason, "reasoning", (choice?.message?.reasoning_content ?? "").length);
+			return { content: choice?.message?.content ?? "", tokens: body.result?.usage?.total_tokens ?? 0, ms: Date.now() - started };
 		}
 		if (attempt >= 6) throw new Error(`model failed: ${response?.status ?? "network"}`);
 		await new Promise((resume) => setTimeout(resume, 2 ** attempt * 1000));
