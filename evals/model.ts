@@ -26,7 +26,7 @@ export const chat = async (messages: ReadonlyArray<Message>): Promise<Reply> => 
 		const response = await fetch(`https://gateway.ai.cloudflare.com/v1/${settings.accountId}/${settings.gateway}/workers-ai/${MODEL}`, {
 			method: "POST",
 			headers: { authorization: `Bearer ${settings.token}`, "content-type": "application/json", "cf-aig-skip-cache": "true" },
-			body: JSON.stringify({ messages, max_tokens: Number(process.env.MAX_TOKENS ?? 6000), temperature: 0.7, chat_template_kwargs: { enable_thinking: false } }),
+			body: JSON.stringify({ messages, max_tokens: Number(process.env.MAX_TOKENS ?? 12000), temperature: 0.7, chat_template_kwargs: { enable_thinking: false } }),
 			signal: AbortSignal.timeout(180_000),
 		}).catch(() => null);
 		if (response?.ok) {

@@ -1,7 +1,7 @@
 {
   "kind": "write-the-system",
-  "at": "2026-11-11T07:58:17.497Z",
-  "commit": "054a540dbb55d1ec88f9e17f2917cd26b2b22964",
+  "at": "2026-11-11T08:03:26.371Z",
+  "commit": "0573abc4a5c8e082e0230c17b15002914365f9e3",
   "model": "@cf/zai-org/glm-5.3-flash",
   "count": 30,
   "seed": 7,
@@ -9,16 +9,16 @@
     {
       "trial": 1,
       "arm": "model-does-every-item",
-      "tokens": 8437,
+      "tokens": 7168,
       "modelCalls": 3,
-      "modelMs": 44443,
-      "wallMs": 22175,
+      "modelMs": 21626,
+      "wallMs": 10721,
       "programMs": null,
       "programSource": null,
       "attempts": 1,
       "error": null,
       "score": {
-        "exact": 30,
+        "exact": 29,
         "fields": {
           "name": 30,
           "timeoutMs": 30,
@@ -27,7 +27,7 @@
           "retries": 30,
           "tags": 30,
           "enabled": 30,
-          "priority": 30
+          "priority": 29
         },
         "total": 30
       }
@@ -35,10 +35,10 @@
     {
       "trial": 1,
       "arm": "model-writes-program",
-      "tokens": 2674,
+      "tokens": 6674,
       "modelCalls": 1,
-      "modelMs": 34681,
-      "wallMs": 34696,
+      "modelMs": 41634,
+      "wallMs": 41648,
       "programMs": 14,
       "programSource": "",
       "attempts": 1,
@@ -61,29 +61,29 @@
     {
       "trial": 1,
       "arm": "model-writes-program-checked",
-      "tokens": 8958,
-      "modelCalls": 3,
-      "modelMs": 78571,
-      "wallMs": 78578,
-      "programMs": 1,
-      "programSource": "",
-      "attempts": 3,
+      "tokens": 10479,
+      "modelCalls": 34,
+      "modelMs": 75133,
+      "wallMs": 75192,
+      "programMs": 45,
+      "programSource": "const v1Configs = tool(\"configs\", {});\nconst v2Configs = [];\n\nfor (const cfg of v1Configs) {\n  // timeout -> timeoutMs (bare number = seconds)\n  let timeoutMs = 0;\n  const rawTimeout = cfg.timeout;\n  if (typeof rawTimeout === \"number\") {\n    timeoutMs = Math.round(rawTimeout * 1000);\n  } else if (rawTimeout !== undefined && rawTimeout !== null) {\n    const m = String(rawTimeout).trim().match(/^(\\d+(?:\\.\\d+)?)\\s*(ms|s|m)?$/);\n    if (m) {\n      const value = parseFloat(m[1]);\n      const unit = m[2] || \"s\";\n      if (unit === \"ms\") {\n        timeoutMs = Math.round(value);\n      } else if (unit === \"m\") {\n        timeoutMs = Math.round(value * 60 * 1000);\n      } else {\n        timeoutMs = Math.round(value * 1000);\n      }\n    }\n  }\n\n  // endpoint -> host, port (443 when no port)\n  let host = \"\";\n  let port = 443;\n  const rawEndpoint = String(cfg.endpoint == null ? \"\" : cfg.endpoint).trim();\n  const colonIndex = rawEndpoint.lastIndexOf(\":\");\n  const maybePort = colonIndex >= 0 ? rawEndpoint.slice(colonIndex + 1) : \"\";\n  if (colonIndex > 0 && /^\\d+$/.test(maybePort)) {\n    host = rawEndpoint.slice(0, colonIndex);\n    port = parseInt(maybePort, 10);\n  } else {\n    host = rawEndpoint;\n  }\n\n  // retries (0 when missing)\n  let retries = 0;\n  if (cfg.retries !== undefined && cfg.retries !== null && cfg.retries !== \"\") {\n    const parsedRetries = parseInt(cfg.retries, 10);\n    if (!isNaN(parsedRetries)) {\n      retries = parsedRetries;\n    }\n  }\n\n  // tags: lowercase, trimmed, de-duplicated, sorted ascending\n  let rawTags = [];\n  if (typeof cfg.tags === \"string\") {\n    rawTags = cfg.tags.split(\",\");\n  } else if (Array.isArray(cfg.tags)) {\n    rawTags = cfg.tags;\n  }\n  const seenTags = {};\n  const tags = [];\n  for (const rawTag of rawTags) {\n    const tag = String(rawTag).trim().toLowerCase();\n    if (tag === \"\" || seenTags[tag]) {\n      continue;\n    }\n    seenTags[tag] = true;\n    tags.push(tag);\n  }\n  tags.sort();\n\n  // enabled\n  let enabled = false;\n  const rawEnabled = cfg.enabled;\n  if (\n    rawEnabled === true ||\n    rawEnabled === 1 ||\n    rawEnabled === \"yes\" ||\n    rawEnabled === \"true\" ||\n    rawEnabled === \"on\"\n  ) {\n    enabled = true;\n  }\n\n  // priority: judgment call, ask the model once per config\n  const priority = tool(\"judge\", {\n    question:\n      \"A service owner wrote a note about their service. Classify its priority. \" +\n      \"urgent: an outage would hurt customers, revenue or login, or it needs someone woken up. \" +\n      \"low: nobody depends on it, experimental, legacy or best effort. \" +\n      \"normal: everything else. Answer with exactly one word.\",\n    options: [\"urgent\", \"normal\", \"low\"],\n    text: cfg.owner_note == null ? \"\" : String(cfg.owner_note)\n  });\n\n  v2Configs.push({\n    name: cfg.name,\n    timeoutMs: timeoutMs,\n    host: host,\n    port: port,\n    retries: retries,\n    tags: tags,\n    enabled: enabled,\n    priority: priority\n  });\n}\n\nv2Configs;",
+      "attempts": 1,
       "error": null,
       "score": {
-        "exact": 0,
+        "exact": 29,
         "fields": {
-          "name": 0,
-          "timeoutMs": 0,
-          "host": 0,
-          "port": 0,
-          "retries": 0,
-          "tags": 0,
-          "enabled": 0,
-          "priority": 0
+          "name": 30,
+          "timeoutMs": 30,
+          "host": 30,
+          "port": 30,
+          "retries": 30,
+          "tags": 30,
+          "enabled": 30,
+          "priority": 29
         },
         "total": 30
       }
     }
   ],
-  "sha256": "bc6f167b031c632a112aee5a44f6264f8c37dfe7df80187f4845f91021249b87"
+  "sha256": "a61406868d4ca20fd48e4ca981bc7415ab69e09bf77a221a9d1245583b3b0c6b"
 }

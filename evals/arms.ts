@@ -152,6 +152,10 @@ export const modelWritesProgram = async (items: ReadonlyArray<Item>, withCheck: 
 		source = fenced(reply, "javascript");
 		messages.push({ role: "assistant", content: reply });
 		if (!withCheck) break;
+		if (source === "") {
+			messages.pop();
+			continue;
+		}
 		const trial = await runProgram(source, EXAMPLES.map((example) => example.input), counter);
 		if (trial.outcome._tag === "Finished") {
 			const outputs = Array.isArray(trial.outcome.result) ? trial.outcome.result : [];
@@ -163,6 +167,7 @@ export const modelWritesProgram = async (items: ReadonlyArray<Item>, withCheck: 
 			messages.push({ role: "user", content: `I ran your program on the examples and it did not finish: ${detail}\n\nFix the program. Reply with only the whole program in one javascript code block.` });
 		}
 	}
+	if (source === "") return { arm: withCheck ? "model-writes-program-checked" : "model-writes-program", outputs: items.map(() => null), tokens: counter.tokens, modelCalls: counter.calls, modelMs: counter.modelMs, wallMs: Date.now() - started, programMs: null, programSource: "", attempts, error: "EmptyReply: the model returned no program" };
 	const run = await runProgram(source, items.map((item) => item.input), counter);
 	const outputs = run.outcome._tag === "Finished" && Array.isArray(run.outcome.result) ? run.outcome.result : [];
 	const error = run.outcome._tag === "Failed" ? `${run.outcome.error}: ${firstLines(run.outcome.message, 3)}` : run.outcome._tag === "Finished" ? null : run.outcome._tag;
