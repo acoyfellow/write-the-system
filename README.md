@@ -5,7 +5,7 @@ Don't make a model do 500 jobs. Make it write the program once.
 A batch job is usually mostly rules plus a little judgment. `write-the-system` asks a model to write one JavaScript program for the job. The program does the rules itself. When it needs judgment, it hands every case to a small model in one batch. The program is tested on your examples before it touches real data.
 
 ```ts
-import { writeTheSystem } from "write-the-system";
+import { writeTheSystem } from "./src/index.ts";
 
 const built = await writeTheSystem({
   task: "Clean up support tickets. Output { id, email, team }. team is billing, bug or other, judged from the message.",
@@ -104,7 +104,7 @@ A full run (500 or more configs, 3 or more trials) refuses to start with uncommi
 - Tokens are model tokens only. Clef does not report tokens, so the original run leaves them out.
 - In the current run, the baseline produced the same tokens and score in all 3 trials. The model may be close to deterministic at this setting.
 - The program runs in QuickJS: much slower than V8 for heavy computation. It took 7–16 ms for 500 configs.
-- Not published to npm yet. Install from GitHub: `npm install github:acoyfellow/write-the-system effect`.
+- Not a package. Clone the repo and import `src/index.ts`.
 
 ## License
 
