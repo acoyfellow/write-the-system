@@ -1,12 +1,35 @@
 {
   "name": "write-the-system",
+  "version": "0.1.0",
   "private": true,
+  "description": "Have a model write one program for a batch job instead of doing every item. Rules become code; judgment calls go to a small model in one batch.",
+  "license": "MIT",
+  "author": "Jordan Coeyman",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/acoyfellow/write-the-system.git"
+  },
   "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "test": "node --import tsx --test test/*.test.ts",
+    "typecheck": "tsc -p .",
+    "check": "npm run typecheck && npm test",
+    "example": "tsx examples/tickets.ts",
+    "bench": "tsx evals/eval.ts",
+    "bench:small": "COUNT=30 TRIALS=1 ARMS=every,batch tsx evals/eval.ts"
+  },
   "dependencies": {
     "@acoyfellow/amber": "github:acoyfellow/amber",
     "effect": "^4.0.0"
   },
   "devDependencies": {
+    "@cloudflare/workers-types": "^5.20261121.1",
     "@types/node": "^26.6.6",
     "tsx": "^4.23.15",
     "typescript": "^7.0.2"
