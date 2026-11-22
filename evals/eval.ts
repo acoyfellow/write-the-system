@@ -28,7 +28,7 @@ const trials = [];
 
 for (let trial = 1; trial <= TRIALS; trial++) {
 	for (const arm of ARMS) {
-		const result = arm === "every" ? await modelDoesEveryItem(items) : arm === "clef" ? await modelWritesProgramClef(items) : arm.startsWith("ladder-") ? await modelWritesProgramClef(items, Number(arm.slice(7))) : await modelWritesProgram(items, arm === "checked");
+		const result = arm === "every" ? await modelDoesEveryItem(items) : arm === "clef" || arm === "batch" ? await modelWritesProgramClef(items) : arm.startsWith("ladder-") ? await modelWritesProgramClef(items, Number(arm.slice(7))) : await modelWritesProgram(items, arm === "checked");
 		const summary = { trial, ...summarize(items, result), ladder: result.ladder };
 		trials.push(summary);
 		if (summary.ladder !== undefined) {
@@ -38,9 +38,9 @@ for (let trial = 1; trial <= TRIALS; trial++) {
 			const confidentWrong = trace.clef.filter((label, index) => label !== truth[index] && !trace.escalated.includes(index)).length;
 			const fixed = trace.escalated.filter((index) => trace.clef[index] !== truth[index] && trace.final[index] === truth[index]).length;
 			const broke = trace.escalated.filter((index) => trace.clef[index] === truth[index] && trace.final[index] !== truth[index]).length;
-			console.log(`  ladder clefWrong=${wrong(trace.clef)} escalated=${trace.escalated.length} fixed=${fixed} broke=${broke} finalWrong=${wrong(trace.final)} wrongAndSure=${confidentWrong}`);
+			console.log(`  judge wrong=${wrong(trace.clef)} escalated=${trace.escalated.length} fixed=${fixed} broke=${broke} finalWrong=${wrong(trace.final)} wrongAndSure=${confidentWrong}`);
 		}
-		console.log(`${trial} ${summary.arm} exact=${summary.score.exact}/${summary.score.total} priority=${summary.score.fields.priority} tokens=${summary.tokens} calls=${summary.modelCalls} wall=${summary.wallMs}ms program=${summary.programMs ?? "-"}ms attempts=${summary.attempts}${summary.clefItems === undefined ? "" : ` clef=${summary.clefItems}items/${summary.judgeCalls}calls/${summary.clefMs}ms errors=${summary.clefErrors}`}${summary.error ? ` error=${summary.error.split("\n")[0]}` : ""}`);
+		console.log(`${trial} ${summary.arm} exact=${summary.score.exact}/${summary.score.total} priority=${summary.score.fields.priority} tokens=${summary.tokens} calls=${summary.modelCalls} wall=${summary.wallMs}ms program=${summary.programMs ?? "-"}ms attempts=${summary.attempts}${summary.clefItems === undefined ? "" : ` judge=${summary.judgeName} ${summary.clefItems}items/${summary.judgeCalls}calls/${summary.clefMs}ms judgeTokens=${summary.judgeTokens} errors=${summary.clefErrors}`}${summary.error ? ` error=${summary.error.split("\n")[0]}` : ""}`);
 	}
 }
 

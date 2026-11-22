@@ -3,7 +3,7 @@ import { fileURLToPath } from "node:url";
 import { Schema } from "effect";
 import { DurableScript, external, memoryStorage, type Outcome, read } from "@acoyfellow/amber";
 import { EXAMPLES, type Item, type Legacy, SPEC, score } from "./data.ts";
-import { clefPriorities } from "./clef.ts";
+import { type BatchJudge, selectJudge } from "./judge.ts";
 import { chat, type Message } from "./model.ts";
 
 type ModuleConstructor = new (bytes: Uint8Array) => WebAssembly.Module;
@@ -29,6 +29,8 @@ export type ArmResult = {
 	readonly clefItems?: number;
 	readonly clefErrors?: number;
 	readonly clefMs?: number;
+	readonly judgeTokens?: number;
+	readonly judgeName?: string;
 	readonly ladder?: LadderTrace;
 };
 
@@ -197,7 +199,7 @@ const CLEF_WRITER = `${SPEC}
 
 Write a JavaScript program that migrates every config. It runs in a sandbox with no imports, no network and no timers.
 - tool("configs", {}) returns the array of v1 configs.
-- tool("judge_priorities", { notes }) takes an array of owner_note strings and returns an array of the same length, each "urgent", "normal" or "low". A fast small model judges them all at once. Call it once, with every note.
+- tool("judge_priorities", { notes }) takes an array of owner_note strings and returns an array of the same length, each "urgent", "normal" or "low". A small, fast model judges them all at once. Call it once, with every note.
 - The program's last expression is its result: the array of v2 objects, in input order.
 Write plain loops (for...of), not forEach or map, around tool() calls.
 
@@ -209,9 +211,11 @@ Reply with only the program in one javascript code block.`;
 
 type Ladder = { readonly floor: number; readonly counter: Meter };
 
+type Judging = { readonly judge: BatchJudge; readonly ladder: Ladder | null };
+
 export type LadderTrace = { readonly clef: ReadonlyArray<string>; readonly confidence: ReadonlyArray<number>; readonly final: ReadonlyArray<string>; readonly escalated: ReadonlyArray<number> };
 
-type ClefRun = { readonly outcome: Outcome; readonly programMs: number; readonly calls: number; readonly items: number; readonly errors: number; readonly clefMs: number; readonly trace: LadderTrace | null };
+type ClefRun = { readonly outcome: Outcome; readonly programMs: number; readonly calls: number; readonly items: number; readonly errors: number; readonly clefMs: number; readonly judgeTokens: number; readonly trace: LadderTrace | null };
 
 const PRIORITIES = new Set(["urgent", "normal", "low"]);
 
@@ -223,8 +227,8 @@ const escalate = async (ladder: Ladder, notes: ReadonlyArray<string>): Promise<R
 	return parseArray(reply).map(String);
 };
 
-const judge = async (notes: ReadonlyArray<string>, ladder: Ladder | null): Promise<{ readonly labels: ReadonlyArray<string>; readonly errors: number; readonly ms: number; readonly trace: LadderTrace }> => {
-	const judged = await clefPriorities(notes);
+const judge = async (notes: ReadonlyArray<string>, { judge: batch, ladder }: Judging): Promise<{ readonly labels: ReadonlyArray<string>; readonly errors: number; readonly ms: number; readonly tokens: number; readonly trace: LadderTrace }> => {
+	const judged = await batch.judge(notes);
 	const escalated = ladder === null ? [] : notes.flatMap((_note, index) => ((judged.confidence[index] ?? 0) < ladder.floor ? [index] : []));
 	const upper = ladder === null || escalated.length === 0 ? [] : await escalate(ladder, escalated.map((index) => notes[index] ?? ""));
 	const final = judged.labels.map((label, index) => {
@@ -232,10 +236,10 @@ const judge = async (notes: ReadonlyArray<string>, ladder: Ladder | null): Promi
 		const better = position < 0 ? undefined : upper[position];
 		return better !== undefined && PRIORITIES.has(better) ? better : label;
 	});
-	return { labels: final, errors: judged.errors, ms: judged.roundTripMs, trace: { clef: judged.labels, confidence: judged.confidence, final, escalated } };
+	return { labels: final, errors: judged.errors, ms: judged.roundTripMs, tokens: judged.tokens, trace: { clef: judged.labels, confidence: judged.confidence, final, escalated } };
 };
 
-const runClefProgram = async (source: string, configs: ReadonlyArray<Legacy>, ladder: Ladder | null): Promise<ClefRun> => {
+const runClefProgram = async (source: string, configs: ReadonlyArray<Legacy>, judging: Judging): Promise<ClefRun> => {
 	const tools = {
 		configs: read(Schema.Json, () => configs as unknown as Schema.Json),
 		judge_priorities: external(Schema.Json),
@@ -247,6 +251,7 @@ const runClefProgram = async (source: string, configs: ReadonlyArray<Legacy>, la
 	let items = 0;
 	let errors = 0;
 	let clefMs = 0;
+	let judgeTokens = 0;
 	let trace: LadderTrace | null = null;
 	let outcome = await script.run(source);
 	for (let guard = 0; guard < 1000; guard++) {
@@ -257,16 +262,17 @@ const runClefProgram = async (source: string, configs: ReadonlyArray<Legacy>, la
 		if (outcome._tag !== "Waiting") break;
 		const notes = ((outcome.args as { notes?: ReadonlyArray<unknown> }).notes ?? []).map(String);
 		const judgeStarted = Date.now();
-		const judged = await judge(notes, ladder);
+		const judged = await judge(notes, judging);
 		judgeMs += Date.now() - judgeStarted;
 		calls += 1;
 		items += notes.length;
 		errors += judged.errors;
 		clefMs += judged.ms;
+		judgeTokens += judged.tokens;
 		trace = judged.trace;
 		outcome = await script.answer(outcome.token, judged.labels);
 	}
-	return { outcome, programMs: Date.now() - started - judgeMs, calls, items, errors, clefMs, trace };
+	return { outcome, programMs: Date.now() - started - judgeMs, calls, items, errors, clefMs, judgeTokens, trace };
 };
 
 const mechanicalMistakes = (outputs: ReadonlyArray<unknown>): Array<string> =>
@@ -279,16 +285,18 @@ const mechanicalMistakes = (outputs: ReadonlyArray<unknown>): Array<string> =>
 export const modelWritesProgramClef = async (items: ReadonlyArray<Item>, floor: number | null = null): Promise<ArmResult> => {
 	const counter = meter();
 	const ladder = floor === null ? null : { floor, counter };
+	const judging: Judging = { judge: selectJudge(), ladder };
 	const started = Date.now();
 	const messages: Array<Message> = [{ role: "user", content: CLEF_WRITER }];
 	let source = "";
 	let attempts = 0;
-	const clef = { calls: 0, items: 0, errors: 0, ms: 0 };
+	const clef = { calls: 0, items: 0, errors: 0, ms: 0, tokens: 0 };
 	const add = (run: ClefRun): void => {
 		clef.calls += run.calls;
 		clef.items += run.items;
 		clef.errors += run.errors;
 		clef.ms += run.clefMs;
+		clef.tokens += run.judgeTokens;
 	};
 	while (attempts < 3) {
 		attempts += 1;
@@ -296,7 +304,7 @@ export const modelWritesProgramClef = async (items: ReadonlyArray<Item>, floor: 
 		source = fenced(reply, "javascript");
 		if (source === "") continue;
 		messages.push({ role: "assistant", content: reply });
-		const trial = await runClefProgram(source, EXAMPLES.map((example) => example.input), ladder);
+		const trial = await runClefProgram(source, EXAMPLES.map((example) => example.input), judging);
 		add(trial);
 		if (trial.outcome._tag === "Finished") {
 			const wrong = mechanicalMistakes(Array.isArray(trial.outcome.result) ? trial.outcome.result : []);
@@ -307,9 +315,9 @@ export const modelWritesProgramClef = async (items: ReadonlyArray<Item>, floor: 
 			messages.push({ role: "user", content: `I ran your program on the examples and it did not finish: ${detail}\n\nFix the program. Reply with only the whole program in one javascript code block.` });
 		}
 	}
-	const base = { arm: floor === null ? "model-writes-program-clef" : `ladder-${floor}`, attempts };
+	const base = { arm: floor === null ? `model-writes-program-${judging.judge.name}` : `ladder-${floor}`, attempts, judgeName: judging.judge.name };
 	if (source === "") return { ...base, outputs: items.map(() => null), tokens: counter.tokens, modelCalls: counter.calls, modelMs: counter.modelMs, wallMs: Date.now() - started, programMs: null, programSource: "", error: "EmptyReply: the model returned no program" };
-	const run = await runClefProgram(source, items.map((item) => item.input), ladder);
+	const run = await runClefProgram(source, items.map((item) => item.input), judging);
 	add(run);
 	const outputs = run.outcome._tag === "Finished" && Array.isArray(run.outcome.result) ? run.outcome.result : [];
 	const error = run.outcome._tag === "Failed" ? `${run.outcome.error}: ${firstLines(run.outcome.message, 3)}` : run.outcome._tag === "Finished" ? null : run.outcome._tag;
@@ -327,6 +335,7 @@ export const modelWritesProgramClef = async (items: ReadonlyArray<Item>, floor: 
 		clefItems: clef.items,
 		clefErrors: clef.errors,
 		clefMs: clef.ms,
+		judgeTokens: clef.tokens,
 		ladder: run.trace ?? undefined,
 	};
 };
