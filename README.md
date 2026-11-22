@@ -8,16 +8,62 @@ A batch job is usually mostly rules plus a little judgment. `write-the-system` a
 import { writeTheSystem } from "./src/index.ts";
 
 const built = await writeTheSystem({
-  task: "Clean up support tickets. Output { id, email, team }. team is billing, bug or other, judged from the message.",
+  task: [
+    "Clean up support tickets. Output { id, email, team }.",
+    "team is billing, bug or other, judged from the message.",
+  ].join("\n"),
   examples: [
-    { input: { id: "TCK-0042", email: " Ana@Example.COM ", message: "I was charged twice" }, output: { id: 42, email: "ana@example.com", team: "billing" } },
+    {
+      input: {
+        id: "TCK-0042",
+        email: " Ana@Example.COM ",
+        message: "I was charged twice",
+      },
+      output: {
+        id: 42,
+        email: "ana@example.com",
+        team: "billing",
+      },
+    },
   ],
   write: (prompt) => myModel(prompt),
   judge: (messages) => mySmallModel(messages),
 });
 
-const { outputs, judgeCalls } = await built.run(tickets);
+const result = await built.run(tickets);
 ```
+
+The model writes this program. It passed the example on the first try:
+
+```js
+const inputs = tool("inputs", {});
+const texts = [];
+for (const input of inputs) {
+  texts.push(input.message);
+}
+const judgments = tool("judge", { texts });
+const results = [];
+for (let i = 0; i < inputs.length; i++) {
+  const input = inputs[i];
+  const id = parseInt(input.id.replace("TCK-", ""), 10);
+  const email = input.email.toLowerCase().trim();
+  const team = judgments[i];
+  results.push({ id, email, team });
+}
+results;
+```
+
+Run on three new tickets, it makes one judge call and returns:
+
+```json
+[
+  { "id": 500, "email": "carl@mail.com", "team": "billing" },
+  { "id": 501, "email": "dee@x.org", "team": "bug" },
+  { "id": 502, "email": "eve@y.net", "team": "other" }
+]
+```
+
+The full script is [`examples/tickets.ts`](examples/tickets.ts).
 
 ## How it works
 
